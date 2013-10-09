@@ -320,9 +320,9 @@ if( !class_exists( 'KM_Filter' ) ) {
 	  			_kmq.push(['identify', document.getElementById('email').value]);
 <?php 			} ?>
   				_kmq.push(['record', 'Commented', {
-					name: document.getElementById( 'author' ).value,
-					email: document.getElementById( 'email' ).value,
-					comment: document.getElementById( 'comment' ).value
+					'Commenter name': document.getElementById( 'author' ).value,
+					'Commenter email': document.getElementById( 'email' ).value,
+					'Comment': document.getElementById( 'comment' ).value
 				}]);
   			},
 			el = document.getElementById('submit');
