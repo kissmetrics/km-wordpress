@@ -102,7 +102,7 @@ if( !class_exists( 'KM_Filter' ) ) {
 		if(document.getElementsByTagName('body')[0].className.match('search-results')) {
 			try {
 				var query = KM.uprts(decodeURIComponent(window.location.href)).params.s;
-				_kmq.push(['record', 'Search', {query: query}]);
+				_kmq.push(['record', 'Searched Site', {'WordPress Search Query': query}]);
 			} catch(e) {}
 		}
 	});
