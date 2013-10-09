@@ -1,17 +1,17 @@
 <?php
 /**
- * @package KISSMetrics
+ * @package KISSmetrics
  */
 /*
-Plugin Name: KISSMetrics
-Plugin URI: http://kissmetrics.com
-Description: Using KISSMetrics, automagically track pageviews / blog post views and add properties for title, category / categories, tags, and comments.
-Version: 0.0.1
-Author: KISSMetrics
-Author URI: http://kissmetrics.com
+Plugin Name: KISSmetrics
+Plugin URI: http://support.kissmetrics.com/integrations/wordpress
+Description: Using KISSmetrics, automagically track pageviews / blog post views and add properties for title, category / categories, tags, and comments.
+Version: 0.0.2
+Author: KISSmetrics
+Author URI: http://www.kissmetrics.com
 */
 
-define('KISSMETRICS_VERSION', '0.0.1');
+define('KISSMETRICS_VERSION', '0.0.2');
 define('KISSMETRICS_PLUGIN_URL', plugin_dir_url( __FILE__ ));
 
 // Make sure we don't expose any info if called directly
@@ -30,7 +30,7 @@ if( !class_exists( 'KM_Filter' ) ) {
 		static $link_regex = '/<a (.*?)href="(.*?)"(.*?)>(.*?)<\/a>/i';
 
 		/**
-		 * Outputs the KISSMetrics analytics script block.
+		 * Outputs the KISSmetrics analytics script block.
 		 */
 		function output_analytics() {
 			global $km_key;
@@ -39,37 +39,32 @@ if( !class_exists( 'KM_Filter' ) ) {
 			if( $km_key != '' ) {
 ?><script type="text/javascript">
   var _kmq = _kmq || [];
+  var _kmk = _kmk || '<?php echo $km_key; ?>';
   function _kms(u){
     setTimeout(function(){
     var s = document.createElement('script'); var f = document.getElementsByTagName('script')[0]; s.type = 'text/javascript'; s.async = true;
     s.src = u; f.parentNode.insertBefore(s, f);
     }, 1);
   }
-  _kms('//i.kissmetrics.com/i.js');_kms('//doug1izaerwt3.cloudfront.net/<?php echo $km_key; ?>.1.js');
-</script>
-<script type="text/javascript">
+  _kms('//i.kissmetrics.com/i.js');_kms('//doug1izaerwt3.cloudfront.net/' + _kmk + '.1.js');
   _kmq.push(function() {
     if(document.getElementsByTagName('body')[0].className.match('home')) {
     	_kmq.push(['record', 'Viewed Blog Homepage']);
     }
   });
-</script>
+
 <?php
 				// Identify authenticated users
 				if( get_option( 'kissmetrics_identify_users' ) && is_user_logged_in() ) {
 					global $current_user;
 					get_currentuserinfo();
-?><script type="text/javascript">
-_kmq.push(['identify', '<?php echo $current_user->user_login ?>']);
-</script>
+?>_kmq.push(['identify', '<?php echo $current_user->user_login ?>']);
 <?php
-
 				}
 
 				// Track social button interactions (tweet, like/unlike, FB connect)
 				if( get_option( 'kissmetrics_track_social' ) ) {
-?><script type="text/javascript">
-_kmq.push(function() {
+?>_kmq.push(function() {
 	if(window.twttr) {
 	  window.twttr.events.bind('tweet', function (event) {
 	    var url = KM.uprts(decodeURIComponent(event.target.src).replace('#', '?')).params.url;
@@ -99,23 +94,22 @@ _kmq.push(function() {
 	  });
 	}
 });
-</script>
 <?php
 				}
-
 				// Track search queries
 				if( get_option( 'kissmetrics_track_search' ) ) {
-?><script type="text/javascript">
-	_kmq.push(function() {
+?>_kmq.push(function() {
 		if(document.getElementsByTagName('body')[0].className.match('search-results')) {
 			try {
 				var query = KM.uprts(decodeURIComponent(window.location.href)).params.s;
-				_kmq.push(['record', 'Search', {query: query}]);
+				_kmq.push(['record', 'Searched Site', {'WordPress Search Query': query}]);
 			} catch(e) {}
 		}
 	});
-</script><?php
+<?php
 				}
+?></script>
+				<?php
 			}
 		}
 
@@ -326,9 +320,9 @@ _kmq.push(function() {
 	  			_kmq.push(['identify', document.getElementById('email').value]);
 <?php 			} ?>
   				_kmq.push(['record', 'Commented', {
-					name: document.getElementById( 'author' ).value,
-					email: document.getElementById( 'email' ).value,
-					comment: document.getElementById( 'comment' ).value
+					'Commenter name': document.getElementById( 'author' ).value,
+					'Commenter email': document.getElementById( 'email' ).value,
+					'Comment': document.getElementById( 'comment' ).value
 				}]);
   			},
 			el = document.getElementById('submit');
