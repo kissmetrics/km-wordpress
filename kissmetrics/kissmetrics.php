@@ -6,12 +6,12 @@
 Plugin Name: KISSmetrics
 Plugin URI: http://support.kissmetrics.com/integrations/wordpress
 Description: Using KISSmetrics, automagically track pageviews / blog post views and add properties for title, category / categories, tags, and comments.
-Version: 0.0.1
+Version: 0.0.2
 Author: KISSmetrics
-Author URI: http://kissmetrics.com
+Author URI: http://www.kissmetrics.com
 */
 
-define('KISSMETRICS_VERSION', '0.0.1');
+define('KISSMETRICS_VERSION', '0.0.2');
 define('KISSMETRICS_PLUGIN_URL', plugin_dir_url( __FILE__ ));
 
 // Make sure we don't expose any info if called directly
