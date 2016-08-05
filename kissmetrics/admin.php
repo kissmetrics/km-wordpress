@@ -26,7 +26,7 @@ if( !class_exists( 'KM_Admin' ) ) {
 				if( !current_user_can( 'manage_options' ) )
 					die( __('You cannot edit the UA string.') );
 
-				check_admin_referer();
+				check_admin_referer('km_config_action');
 				$km_key = $_POST['km_key'];
 				update_option( 'kissmetrics_key', $km_key );
 
@@ -81,6 +81,7 @@ if( !class_exists( 'KM_Admin' ) ) {
 				<p>Description goes here.</p>
 
 				<form action="" method="post" id="kissmetrics-config">
+				<?php wp_nonce_field('km_config_action'); ?>
 					<table class="form-table">
 						<tbody>
 							<tr valign="top">
