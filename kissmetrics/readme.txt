@@ -3,7 +3,7 @@ Contributors: endtwist, eskfung
 Tags: analytics
 Requires at least: 3.0
 Tested up to: 3.3.1
-Stable tag: 0.0.2
+Stable tag: 0.0.3
 
 Using KISSmetrics, automagically track post views, authentication events, social interactions, and much more.
 
