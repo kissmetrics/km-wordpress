@@ -33,6 +33,9 @@ Automatically identify:
 
 == Changelog ==
 
+= 0.0.3 =
+Bugfix: correct use of check_admin_referer with nonce
+
 = 0.0.2 =
 Bugfix: closing JS script tag would not appear unless you opted to track Search
 Queries.
