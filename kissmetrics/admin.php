@@ -1,6 +1,6 @@
 <?php
 /**
- * @package KISSmetrics
+ * @package Kissmetrics
  */
 
 if( !class_exists( 'KM_Admin' ) ) {
@@ -13,7 +13,7 @@ if( !class_exists( 'KM_Admin' ) ) {
 			global $wpdb;
 
 			if( function_exists( 'add_submenu_page' ) ) {
-				add_submenu_page( 'options-general.php', 'KISSmetrics Configuration', 'KISSmetrics', 1, 'kissmetrics', array( __CLASS__, 'config_page' ) );
+				add_submenu_page( 'options-general.php', 'Kissmetrics Configuration', 'Kissmetrics', 1, 'kissmetrics', array( __CLASS__, 'config_page' ) );
 			}
 		}
 
@@ -66,7 +66,7 @@ if( !class_exists( 'KM_Admin' ) ) {
 			?>
 			<div class="wrap">
 				<div id="icon-options-general" class="icon32"></div>
-				<h2>KISSmetrics</h2>
+				<h2>Kissmetrics</h2>
 
 				<?php if( isset( $_POST['submit'] ) ) { ?>
 				<div id="saved" style="width:40%;height:40px;line-height:40px;margin:20px auto;background:#85b84d;color:#fff;border:1px solid #608537;text-align:center;font-weight:700;">Your settings have been saved.</div>
@@ -90,7 +90,7 @@ if( !class_exists( 'KM_Admin' ) ) {
 								</th>
 								<td>
 									<input id="km_key" name="km_key" type="text" class="regular-text" value="<?php echo get_option( 'kissmetrics_key' ); ?>" style="font-family: 'Courier New', Courier, mono; font-size: 1em;" />
-									<span class="description">Get your API key from the <a href="https://app.kissmetrics.com/settings">KISSmetrics Settings</a> page.</span>
+									<span class="description">Get your API key from the <a href="https://app.kissmetrics.com/settings">Kissmetrics Settings</a> page.</span>
 								</td>
 							</tr>
 
