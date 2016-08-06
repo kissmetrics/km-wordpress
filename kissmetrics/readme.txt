@@ -1,15 +1,15 @@
-=== KISSmetrics ===
+=== Kissmetrics ===
 Contributors: endtwist, eskfung
 Tags: analytics
 Requires at least: 3.0
 Tested up to: 3.3.1
 Stable tag: 0.0.3
 
-Using KISSmetrics, automagically track post views, authentication events, social interactions, and much more.
+Using Kissmetrics, automagically track post views, authentication events, social interactions, and much more.
 
 == Description ==
 
-Make integrating KISSmetrics into your Wordpress blog or website a breeze. Automatically track a variety of view,
+Make integrating Kissmetrics into your Wordpress blog or website a breeze. Automatically track a variety of view,
 authentication, and social interaction events with minimal configuration.
 
 Easily track:
@@ -28,7 +28,7 @@ Automatically identify:
 
 1. Upload the entire `kissmetrics` folder to the `/wp-content/plugins/` directory.
 2. In the WordPress admin dashboard, go to the `Plugins` menu and activate the plugin.
-3. Go to `Settings` menu, then to the KISSmetrics settings.
+3. Go to `Settings` menu, then to the Kissmetrics settings.
 4. Add your API key here and select which events you would like to have automatically tracked.
 
 == Changelog ==

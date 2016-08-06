@@ -1,17 +1,17 @@
 <?php
 /**
- * @package KISSmetrics
+ * @package Kissmetrics
  */
 /*
-Plugin Name: KISSmetrics
+Plugin Name: Kissmetrics
 Plugin URI: http://support.kissmetrics.com/integrations/wordpress
-Description: Using KISSmetrics, automagically track pageviews / blog post views and add properties for title, category / categories, tags, and comments.
+Description: Using Kissmetrics, automagically track pageviews / blog post views and add properties for title, category / categories, tags, and comments.
 Version: 0.0.3
-Author: KISSmetrics
+Author: Kissmetrics
 Author URI: http://www.kissmetrics.com
 */
 
-define('KISSMETRICS_VERSION', '0.0.2');
+define('KISSMETRICS_VERSION', '0.0.3');
 define('KISSMETRICS_PLUGIN_URL', plugin_dir_url( __FILE__ ));
 
 // Make sure we don't expose any info if called directly
@@ -30,7 +30,7 @@ if( !class_exists( 'KM_Filter' ) ) {
 		static $link_regex = '/<a (.*?)href="(.*?)"(.*?)>(.*?)<\/a>/i';
 
 		/**
-		 * Outputs the KISSmetrics analytics script block.
+		 * Outputs the Kissmetrics analytics script block.
 		 */
 		function output_analytics() {
 			global $km_key;
