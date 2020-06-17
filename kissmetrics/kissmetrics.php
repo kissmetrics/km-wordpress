@@ -4,14 +4,14 @@
  */
 /*
 Plugin Name: Kissmetrics
-Plugin URI: http://support.kissmetrics.com/integrations/wordpress
+Plugin URI: https://support.kissmetrics.io/docs/wordpress-plugin
 Description: Using Kissmetrics, automagically track pageviews / blog post views and add properties for title, category / categories, tags, and comments.
-Version: 0.0.3
+Version: 0.1.0
 Author: Kissmetrics
-Author URI: http://www.kissmetrics.com
+Author URI: http://www.kissmetrics.io
 */
 
-define('KISSMETRICS_VERSION', '0.0.3');
+define('KISSMETRICS_VERSION', '0.1.0');
 define('KISSMETRICS_PLUGIN_URL', plugin_dir_url( __FILE__ ));
 
 // Make sure we don't expose any info if called directly
@@ -46,7 +46,7 @@ if( !class_exists( 'KM_Filter' ) ) {
     s.src = u; f.parentNode.insertBefore(s, f);
     }, 1);
   }
-  _kms('//i.kissmetrics.com/i.js');_kms('//scripts.kissmetrics.com/' + _kmk + '.2.js');
+  _kms('//i.kissmetrics.io/i.js');_kms('//scripts.kissmetrics.io/' + _kmk + '.2.js');
   _kmq.push(function() {
     if(document.getElementsByTagName('body')[0].className.match('home')) {
     	_kmq.push(['record', 'Viewed Blog Homepage']);

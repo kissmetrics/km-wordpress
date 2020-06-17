@@ -3,7 +3,7 @@ Contributors: endtwist, eskfung
 Tags: analytics
 Requires at least: 3.0
 Tested up to: 3.3.1
-Stable tag: 0.0.3
+Stable tag: 0.1.0
 
 Using Kissmetrics, automagically track post views, authentication events, social interactions, and much more.
 
@@ -32,6 +32,9 @@ Automatically identify:
 4. Add your API key here and select which events you would like to have automatically tracked.
 
 == Changelog ==
+
+= 0.1.0 =
+Update to kissmetrics.io domain
 
 = 0.0.3 =
 Bugfix: correct use of check_admin_referer with nonce
