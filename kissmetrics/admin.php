@@ -90,7 +90,7 @@ if( !class_exists( 'KM_Admin' ) ) {
 								</th>
 								<td>
 									<input id="km_key" name="km_key" type="text" class="regular-text" value="<?php echo get_option( 'kissmetrics_key' ); ?>" style="font-family: 'Courier New', Courier, mono; font-size: 1em;" />
-									<span class="description">Get your API key from the <a href="https://app.kissmetrics.com/settings">Kissmetrics Settings</a> page.</span>
+									<span class="description">Get your API key from the <a href="https://app.kissmetrics.io/settings">Kissmetrics Settings</a> page.</span>
 								</td>
 							</tr>
 
