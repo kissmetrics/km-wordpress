@@ -229,7 +229,7 @@ if( !class_exists( 'KM_Filter' ) ) {
 			}
 
 			$kmq = array(
-				( $target['domain'] !== $origin['domain'] ) ? 'trackClickOnOutboundLink' : 'trackClick',
+				( $target['domain'] !== $origin['domain'] && $target['domain'] !== '#' && $target['domain'] !== '' ) ? 'trackClickOnOutboundLink' : 'trackClick',
 				$id,
 				$type . ' link clicked',
 				array(
