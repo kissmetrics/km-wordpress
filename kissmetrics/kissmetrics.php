@@ -6,12 +6,12 @@
 Plugin Name: Kissmetrics
 Plugin URI: https://support.kissmetrics.io/docs/wordpress-plugin
 Description: Using Kissmetrics, automagically track pageviews / blog post views and add properties for title, category / categories, tags, and comments.
-Version: 0.1.0
+Version: 0.1.1
 Author: Kissmetrics
 Author URI: http://www.kissmetrics.io
 */
 
-define('KISSMETRICS_VERSION', '0.1.0');
+define('KISSMETRICS_VERSION', '0.1.1');
 define('KISSMETRICS_PLUGIN_URL', plugin_dir_url( __FILE__ ));
 
 // Make sure we don't expose any info if called directly
@@ -229,7 +229,7 @@ if( !class_exists( 'KM_Filter' ) ) {
 			}
 
 			$kmq = array(
-				( $target['domain'] !== $origin['domain'] ) ? 'trackClickOnOutboundLink' : 'trackClick',
+				( $target['domain'] !== $origin['domain'] && $target['domain'] !== '#' && $target['domain'] !== '' ) ? 'trackClickOnOutboundLink' : 'trackClick',
 				$id,
 				$type . ' link clicked',
 				array(
