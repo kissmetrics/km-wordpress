@@ -1,0 +1,6 @@
+# Build artifacts
+*.zip
+# Runtime plugin copy created by tests/integration/*.sh
+/tests/integration/kissmetrics/
+# OS cruft
+.DS_Store

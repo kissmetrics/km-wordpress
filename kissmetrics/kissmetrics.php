@@ -1,387 +1,456 @@
 <?php
 /**
+ * Plugin Name: Kissmetrics
+ * Plugin URI: https://support.kissmetrics.io/docs/wordpress-plugin
+ * Description: Automatically install Kissmetrics and track pageviews, blog post views, authentication, search, comments, social interactions, and WooCommerce purchases — no code required.
+ * Version: 0.3.0
+ * Requires at least: 6.3
+ * Requires PHP: 7.4
+ * Author: Kissmetrics
+ * Author URI: https://www.kissmetrics.io
+ * License: GPLv3
+ * License URI: https://www.gnu.org/licenses/gpl-3.0.html
+ * Text Domain: kissmetrics
+ *
  * @package Kissmetrics
  */
-/*
-Plugin Name: Kissmetrics
-Plugin URI: https://support.kissmetrics.io/docs/wordpress-plugin
-Description: Using Kissmetrics, automagically track pageviews / blog post views and add properties for title, category / categories, tags, and comments.
-Version: 0.1.1
-Author: Kissmetrics
-Author URI: http://www.kissmetrics.io
-*/
 
-define('KISSMETRICS_VERSION', '0.1.1');
-define('KISSMETRICS_PLUGIN_URL', plugin_dir_url( __FILE__ ));
-
-// Make sure we don't expose any info if called directly
-if ( !function_exists( 'add_action' ) ) {
-	echo "Hi there! I'm just a plugin, not much I can do when called directly.";
+// Prevent direct access.
+if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-$km_key = '';
+define( 'KISSMETRICS_VERSION', '0.3.0' );
+define( 'KISSMETRICS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 
-if ( is_admin() )
-	require_once dirname( __FILE__ ) . '/admin.php';
+if ( is_admin() ) {
+	require_once __DIR__ . '/admin.php';
+}
 
-if( !class_exists( 'KM_Filter' ) ) {
-	class KM_Filter {
-		static $link_regex = '/<a (.*?)href="(.*?)"(.*?)>(.*?)<\/a>/i';
+if ( ! class_exists( 'Kissmetrics_Filter' ) ) {
 
-		/**
-		 * Outputs the Kissmetrics analytics script block.
-		 */
-		function output_analytics() {
-			global $km_key;
-
-			// As long as the API key is set, output the analytics. Also add code to catch if the user is viewing the homepage.
-			if( $km_key != '' ) {
-?><script type="text/javascript">
-  var _kmq = _kmq || [];
-  var _kmk = _kmk || '<?php echo $km_key; ?>';
-  function _kms(u){
-    setTimeout(function(){
-    var s = document.createElement('script'); var f = document.getElementsByTagName('script')[0]; s.type = 'text/javascript'; s.async = true;
-    s.src = u; f.parentNode.insertBefore(s, f);
-    }, 1);
-  }
-  _kms('//i.kissmetrics.io/i.js');_kms('//scripts.kissmetrics.io/' + _kmk + '.2.js');
-  _kmq.push(function() {
-    if(document.getElementsByTagName('body')[0].className.match('home')) {
-    	_kmq.push(['record', 'Viewed Blog Homepage']);
-    }
-  });
-
-<?php
-				// Identify authenticated users
-				if( get_option( 'kissmetrics_identify_users' ) && is_user_logged_in() ) {
-					global $current_user;
-					get_currentuserinfo();
-?>_kmq.push(['identify', '<?php echo $current_user->user_login ?>']);
-<?php
-				}
-
-				// Track social button interactions (tweet, like/unlike, FB connect)
-				if( get_option( 'kissmetrics_track_social' ) ) {
-?>_kmq.push(function() {
-	if(window.twttr) {
-	  window.twttr.events.bind('tweet', function (event) {
-	    var url = KM.uprts(decodeURIComponent(event.target.src).replace('#', '?')).params.url;
-	    _kmq.push(['record', 'Tweet', { 'Shared URL': url }]);
-	  });
-
-	  window.twttr.events.bind('follow', function (event) {
-	  	_kmq.push(['record', 'Twitter Follow', { 'Username': event.data.screen_name }]);
-	  });
-	}
-
-	if(window.FB) {
-	  window.FB.Event.subscribe('edge.create', function (url) {
-	    _kmq.push(['record', 'Like', { 'Shared URL': url }]);
-	  });
-
-	  window.FB.Event.subscribe('edge.remove', function (url) {
-	    _kmq.push(['record', 'Unlike', { 'Shared URL': url }]);
-	  });
-
-	  window.FB.Event.subscribe('auth.login', function (url) {
-	    _kmq.push(['record', 'Facebook Connect\'d']);
-	  });
-
-	  window.FB.Event.subscribe('auth.logout', function (url) {
-	    _kmq.push(['record', 'Facebook Logout']);
-	  });
-	}
-});
-<?php
-				}
-				// Track search queries
-				if( get_option( 'kissmetrics_track_search' ) ) {
-?>_kmq.push(function() {
-		if(document.getElementsByTagName('body')[0].className.match('search-results')) {
-			try {
-				var query = KM.uprts(decodeURIComponent(window.location.href)).params.s;
-				_kmq.push(['record', 'Searched Site', {'WordPress Search Query': query}]);
-			} catch(e) {}
-		}
-	});
-<?php
-				}
-?></script>
-				<?php
-			}
-		}
-
+	/**
+	 * Core tracking logic for the Kissmetrics plugin.
+	 *
+	 * All browser-facing JavaScript is escaped with esc_js()/wp_json_encode() and
+	 * printed through the script queue (wp_add_inline_script) so the plugin passes
+	 * the WordPress.org Plugin Check guidelines.
+	 */
+	class Kissmetrics_Filter {
 
 		/**
-		 * Creates a "View post" event for single post views when the_content is called.
+		 * Matches anchor tags so we can attach click tracking.
 		 *
-		 * @param string $text The content text.
+		 * @var string
 		 */
-		function the_content( $text ) {
-			$is_post = is_single();
+		public static $link_regex = '/<a (.*?)href="(.*?)"(.*?)>(.*?)<\/a>/i';
 
-			if( ( $is_post || is_page() ) && get_option( 'kissmetrics_track_views' ) ) {
+		/**
+		 * Cached host of this site, used for outbound-link detection.
+		 *
+		 * @var string|null
+		 */
+		private static $origin_domain = null;
+
+		/**
+		 * Return the registered Kissmetrics API key, or '' when unset.
+		 *
+		 * @return string
+		 */
+		private static function key() {
+			$key = get_option( 'kissmetrics_key' );
+			return is_string( $key ) ? trim( $key ) : '';
+		}
+
+		/**
+		 * The registrable domain of the current site (e.g. "example.com").
+		 *
+		 * @return string
+		 */
+		private static function origin_domain() {
+			if ( null === self::$origin_domain ) {
+				self::$origin_domain = self::domain_of( home_url() );
+			}
+			return self::$origin_domain;
+		}
+
+		/**
+		 * Build and enqueue the inline Kissmetrics snippet on the front-end.
+		 */
+		public static function enqueue() {
+			$key = self::key();
+			if ( '' === $key ) {
+				return;
+			}
+
+			// A src of false registers an inline-only handle — the supported way to
+			// print inline JS through the queue without shipping a physical file.
+			wp_register_script( 'kissmetrics', false, array(), KISSMETRICS_VERSION, false );
+			wp_enqueue_script( 'kissmetrics' );
+			wp_add_inline_script( 'kissmetrics', self::loader_js( $key ) . self::context_js() );
+		}
+
+		/**
+		 * Enqueue the snippet on wp-login.php so auth events can be tracked.
+		 */
+		public static function enqueue_login() {
+			$key = self::key();
+			if ( '' === $key ) {
+				return;
+			}
+
+			wp_register_script( 'kissmetrics', false, array(), KISSMETRICS_VERSION, false );
+			wp_enqueue_script( 'kissmetrics' );
+
+			$js = self::loader_js( $key );
+
+			if ( get_option( 'kissmetrics_track_signup_view' ) ) {
+				$js .= "_kmq.push(function(){if(document.getElementById('registerform')){_kmq.push(['record','Viewed signup page']);}});";
+			}
+			if ( get_option( 'kissmetrics_track_login' ) ) {
+				$js .= "_kmq.push(['trackSubmit','loginform','Signed in']);";
+			}
+			if ( get_option( 'kissmetrics_track_signup' ) ) {
+				$js .= "_kmq.push(['trackSubmit','registerform','Created account / registered']);";
+			}
+
+			wp_add_inline_script( 'kissmetrics', $js );
+		}
+
+		/**
+		 * The canonical Kissmetrics async loader.
+		 *
+		 * @param string $key Kissmetrics API key.
+		 * @return string
+		 */
+		private static function loader_js( $key ) {
+			$key_js = esc_js( $key );
+			return "var _kmq = _kmq || [];"
+				. "var _kmk = _kmk || '{$key_js}';"
+				. "function _kms(u){setTimeout(function(){var s=document.createElement('script'),"
+				. "f=document.getElementsByTagName('script')[0];s.type='text/javascript';s.async=true;"
+				. "s.src=u;f.parentNode.insertBefore(s,f);},1);}"
+				. "_kms('//i.kissmetrics.io/i.js');"
+				. "_kms('//scripts.kissmetrics.io/'+_kmk+'.2.js');";
+		}
+
+		/**
+		 * Page-context events (homepage, identify, search, social, commenter id).
+		 *
+		 * These are decided server-side with WordPress conditional tags instead of
+		 * reading theme body classes, so they keep working on block/FSE themes.
+		 *
+		 * @return string
+		 */
+		private static function context_js() {
+			$js = '';
+
+			if ( is_front_page() || is_home() ) {
+				$js .= "_kmq.push(['record','Viewed Homepage']);";
+			}
+
+			if ( get_option( 'kissmetrics_identify_users' ) && is_user_logged_in() ) {
+				$user = wp_get_current_user();
+				if ( $user && $user->user_login ) {
+					$js .= "_kmq.push(['identify','" . esc_js( $user->user_login ) . "']);";
+				}
+			}
+
+			if ( get_option( 'kissmetrics_track_search' ) && is_search() ) {
+				$js .= "_kmq.push(['record','Searched Site',{'WordPress Search Query':'"
+					. esc_js( get_search_query() ) . "'}]);";
+			}
+
+			if ( get_option( 'kissmetrics_track_social' ) ) {
+				$js .= self::social_js();
+			}
+
+			$js .= self::identify_commenter_js();
+
+			return $js;
+		}
+
+		/**
+		 * Identify an unregistered visitor from the WordPress comment-author cookie.
+		 *
+		 * @return string
+		 */
+		private static function identify_commenter_js() {
+			if ( ! get_option( 'kissmetrics_identify_unregistered' ) || is_user_logged_in() ) {
+				return '';
+			}
+			if ( ! is_singular() ) {
+				return '';
+			}
+
+			$cookie_key = 'comment_author_email_' . COOKIEHASH;
+			if ( empty( $_COOKIE[ $cookie_key ] ) ) {
+				return '';
+			}
+
+			$email = sanitize_email( wp_unslash( $_COOKIE[ $cookie_key ] ) ); // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.MissingUnslash
+			if ( ! $email ) {
+				return '';
+			}
+
+			return "_kmq.push(['identify','" . esc_js( $email ) . "']);";
+		}
+
+		/**
+		 * Legacy Facebook/Twitter widget event bindings.
+		 *
+		 * @return string
+		 */
+		private static function social_js() {
+			return "_kmq.push(function(){"
+				. "if(window.twttr){"
+				. "twttr.events.bind('tweet',function(e){var u=KM.uprts(decodeURIComponent(e.target.src).replace('#','?')).params.url;_kmq.push(['record','Tweet',{'Shared URL':u}]);});"
+				. "twttr.events.bind('follow',function(e){_kmq.push(['record','Twitter Follow',{'Username':e.data.screen_name}]);});"
+				. "}"
+				. "if(window.FB){"
+				. "FB.Event.subscribe('edge.create',function(u){_kmq.push(['record','Like',{'Shared URL':u}]);});"
+				. "FB.Event.subscribe('edge.remove',function(u){_kmq.push(['record','Unlike',{'Shared URL':u}]);});"
+				. "FB.Event.subscribe('auth.login',function(){_kmq.push(['record','Facebook Connect\\'d']);});"
+				. "FB.Event.subscribe('auth.logout',function(){_kmq.push(['record','Facebook Logout']);});"
+				. "}});";
+		}
+
+		/**
+		 * Append a post/page view event (and optional link tracking) to the content.
+		 *
+		 * @param string $text Post content.
+		 * @return string
+		 */
+		public static function the_content( $text ) {
+			// Don't inject into feeds or REST responses.
+			if ( is_feed() || ( defined( 'REST_REQUEST' ) && REST_REQUEST ) ) {
+				return $text;
+			}
+
+			if ( ( is_single() || is_page() ) && get_option( 'kissmetrics_track_views' ) ) {
 				global $post;
 
 				$categories = array();
-				foreach( (get_the_category()) as $category ) {
+				foreach ( get_the_category() as $category ) {
 					$categories[] = $category->cat_name;
 				}
 
 				$is_post = is_single();
-
-				$kmq = array(
-					'record',
-					'Viewed ' . ( $is_post ? 'post' : 'page' )
+				$props   = array(
+					'ID'    => $post->ID,
+					'Title' => get_the_title(),
 				);
-
-				if( $is_post ) {
-					// Posts (have categories)
-					$kmq[] = array(
-						'ID' => $post->ID,
-						'Title' => get_the_title(),
-						'Categories' => $categories
-					);
-				} else {
-					// Pages
-					$kmq[] = array(
-						'ID' => $post->ID,
-						'Title' => get_the_title()
-					);
+				if ( $is_post ) {
+					$props['Categories'] = $categories;
 				}
 
-				$text .= "<script>_kmq.push(" . json_encode( $kmq ) . ");</script>";
+				$kmq   = array( 'record', 'Viewed ' . ( $is_post ? 'post' : 'page' ), $props );
+				$text .= '<script>_kmq.push(' . wp_json_encode( $kmq ) . ');</script>';
 			}
 
-			// Track all links
-			if( get_option( 'kissmetrics_track_links' ) )
-				$text = preg_replace_callback( KM_Filter::$link_regex, array( 'KM_Filter', 'parse_content_link' ), $text );
+			if ( get_option( 'kissmetrics_track_links' ) ) {
+				$text = preg_replace_callback( self::$link_regex, array( 'Kissmetrics_Filter', 'parse_content_link' ), $text );
+			}
 
 			return $text;
 		}
 
-
 		/**
-		 * Parse comments for links and add tracking code.
+		 * Append click tracking to links inside comment bodies.
 		 *
-		 * @param string $text The comment text.
+		 * @param string $text Comment content.
+		 * @return string
 		 */
-		function comment_text( $text ) {
-			if( get_option( 'kissmetrics_track_comment_links' ) )
-				$text = preg_replace_callback( KM_Filter::$link_regex, array( 'KM_Filter', 'parse_comment_link' ), $text );
-
+		public static function comment_text( $text ) {
+			if ( get_option( 'kissmetrics_track_comment_links' ) ) {
+				$text = preg_replace_callback( self::$link_regex, array( 'Kissmetrics_Filter', 'parse_comment_link' ), $text );
+			}
 			return $text;
 		}
 
-
 		/**
-		 * Based on the provided host/uri string, returns the domain and the host in a hash.
+		 * Extract the registrable domain from a URL or host string.
 		 *
-		 * @param string $uri The URI/host string.
-		 * @return object The associative array with two keys: "domain" (e.g., google.com) and "host" (e.g., mail.google.com)
+		 * @param string $uri URL or host.
+		 * @return string
 		 */
-		function get_domain( $uri ) {
-			$parsed_uri = parse_url( $uri );
-			if( isset( $parsed_uri['host'] ) )
-				$host = $parsed_uri['host'];
-			else
-				$host = '';
-
-			preg_match( '/[^\.\/]+\.[^\.\/]+$/', $host, $domain );
-
-			if( !count( $domain ) )
-				$domain = array( '' );
-
-			return array( 'domain' => $domain[0], 'host' => $host );
+		public static function domain_of( $uri ) {
+			$host = wp_parse_url( $uri, PHP_URL_HOST );
+			if ( ! $host ) {
+				// Fall back to treating the input as a bare host.
+				$host = preg_replace( '#^https?://#', '', (string) $uri );
+				$host = preg_replace( '#/.*$#', '', $host );
+			}
+			if ( preg_match( '/[^.\/]+\.[^.\/]+$/', $host, $domain ) ) {
+				return $domain[0];
+			}
+			return '';
 		}
 
-
 		/**
-		 * Parses a link, adds an ID, and tracks a link click. Automatically detects if the link is
-		 * to an internal or external resource.
+		 * Build the click-tracking markup for a single matched link.
 		 *
-		 * @param string $page_title The title of the page the link is found on.
-		 * @param string $type The type of tracking code to add ("Comment", "Article")
-		 * @param array $link_matches The group of matches (from preg_match) on the link.
-		 * @return string A link as an HTML string.
+		 * @param string $page_title  Title of the current page.
+		 * @param string $type        "Article" or "Comment".
+		 * @param array  $link_matches Regex match groups.
+		 * @return string
 		 */
-		function parse_link( $page_title, $type, $link_matches ) {
+		public static function parse_link( $page_title, $type, $link_matches ) {
 			static $id_attr_regex = '/id\s*=\s*[\'"](.+?)[\'"]/i';
 
-			$target = KM_Filter::get_domain( $link_matches[2] );
-			$id = '';
+			$target_domain = self::domain_of( $link_matches[2] );
+			$origin_domain = self::origin_domain();
 
-			// Attempt to find the link's "id" attribute, if it has one (if not, we'll give it one)
+			$id_attr = array();
 			preg_match( $id_attr_regex, $link_matches[1], $id_attr );
-			if( !$id_attr ) {
+			if ( ! $id_attr ) {
 				preg_match( $id_attr_regex, $link_matches[3], $id_attr );
-
-				// Still no link id?! Ok.
-				if( !$id_attr ) {
-					$id = uniqid( 'link_' );
-				} else {
-					$id = $id_attr[1];
-				}
-			} else {
-				$id = $id_attr[1];
 			}
+			$has_id = ! empty( $id_attr );
+			$id     = $has_id ? $id_attr[1] : uniqid( 'link_' );
+
+			$is_outbound = ( '' !== $target_domain && $target_domain !== $origin_domain );
 
 			$kmq = array(
-				( $target['domain'] !== $origin['domain'] && $target['domain'] !== '#' && $target['domain'] !== '' ) ? 'trackClickOnOutboundLink' : 'trackClick',
+				$is_outbound ? 'trackClickOnOutboundLink' : 'trackClick',
 				$id,
 				$type . ' link clicked',
 				array(
 					'Title' => $link_matches[4],
-					'Page' => $page_title
-				)
+					'Page'  => $page_title,
+				),
 			);
 
 			return '<a ' . $link_matches[1] . 'href="' . $link_matches[2] . '"' . $link_matches[3]
-			        . ( !$id_attr ? ' id="' . $id . '"' : '' ) . '>'
-			        . $link_matches[4]
-			        . '</a>'
-			        . '<script>_kmq.push(' . json_encode($kmq) . ');</script>';
+				. ( ! $has_id ? ' id="' . esc_attr( $id ) . '"' : '' ) . '>'
+				. $link_matches[4]
+				. '</a>'
+				. '<script>_kmq.push(' . wp_json_encode( $kmq ) . ');</script>';
 		}
 
-
 		/**
-		 * Parse links in the content.
+		 * Callback for links inside post/page content.
 		 *
-		 * @param array $matches The preg_replace_callback matches for links.
-		 * @return string The modified text.
+		 * @param array $matches Regex matches.
+		 * @return string
 		 */
-		function parse_content_link( $matches ) {
-			return KM_Filter::parse_link( get_the_title(), 'Article', $matches );
+		public static function parse_content_link( $matches ) {
+			return self::parse_link( get_the_title(), 'Article', $matches );
 		}
 
-
 		/**
-		 * Parse links in the comments.
+		 * Callback for links inside comments.
 		 *
-		 * @param array $matches The preg_replace_callback matches for links.
-		 * @return string The modified text.
+		 * @param array $matches Regex matches.
+		 * @return string
 		 */
-		function parse_comment_link( $matches ) {
-			return KM_Filter::parse_link( get_the_title(), 'Comment', $matches );
+		public static function parse_comment_link( $matches ) {
+			return self::parse_link( get_the_title(), 'Comment', $matches );
 		}
-
 
 		/**
-		 * Track when a user signs in.
+		 * Track comment submissions (and optionally identify the commenter).
 		 */
-		function track_login() {
-			if( get_option( 'kissmetrics_track_login' ) ) {
-?><script type="text/javascript">
-	_kmq.push(['trackSubmit', 'loginform', 'Signed in']);
-</script><?php
+		public static function track_comment_form() {
+			if ( ! ( is_single() || is_page() ) || ! get_option( 'kissmetrics_track_comment' ) ) {
+				return;
 			}
-		}
 
+			$identify = get_option( 'kissmetrics_identify_unregistered' )
+				? "_kmq.push(['identify',document.getElementById('email').value]);"
+				: '';
+
+			$js = "_kmq=window._kmq||[];_kmq.push(function(){"
+				. "var commented=function(){"
+				. $identify
+				. "_kmq.push(['record','Commented',{"
+				. "name:document.getElementById('author')?document.getElementById('author').value:'',"
+				. "email:document.getElementById('email')?document.getElementById('email').value:'',"
+				. "comment:document.getElementById('comment')?document.getElementById('comment').value:''"
+				. "}]);},el=document.getElementById('submit');"
+				. "if(el&&el.addEventListener){el.addEventListener('mousedown',commented,false);}"
+				. "});";
+
+			wp_register_script( 'kissmetrics-comment', false, array( 'kissmetrics' ), KISSMETRICS_VERSION, true );
+			wp_enqueue_script( 'kissmetrics-comment' );
+			wp_add_inline_script( 'kissmetrics-comment', $js );
+		}
 
 		/**
-		 * Track when a user registers.
+		 * Record a WooCommerce purchase on the order-received (thank you) page.
+		 *
+		 * Detected server-side via is_order_received_page() rather than the legacy
+		 * `woocommerce_thankyou` action, because block-based checkout (the default
+		 * since WooCommerce 8.3) does not fire that action. The order key is verified
+		 * so the event is only emitted for the buyer viewing their own confirmation.
 		 */
-		function track_register() {
-			if( get_option( 'kissmetrics_track_signup' ) ) {
-?><script type="text/javascript">
-	_kmq.push(['trackSubmit', 'registerform', 'Created account / registered']);
-</script><?php
+		public static function track_purchase() {
+			if ( ! get_option( 'kissmetrics_track_ecommerce' ) ) {
+				return;
 			}
-		}
-
-
-		/**
-		 * Track when a user views the registration page.
-		 */
-		function track_register_view() {
-			if( get_option( 'kissmetrics_track_signup_view' ) ) {
-?><script type="text/javascript">
-  _kmq.push(function() {
-    if(document.getElementById('registerform')) {
-    	_kmq.push(['record', 'Viewed signup page']);
-    }
-  });
-</script><?php
+			if ( ! function_exists( 'is_order_received_page' ) || ! is_order_received_page() ) {
+				return;
 			}
-		}
-
-
-		/**
-		 * Track comment form submissions.
-		 */
-		function track_comment_form() {
-			if( ( is_single() || is_page() ) && get_option( 'kissmetrics_track_comment' ) ) {
-?><script type="text/javascript">
-  _kmq.push(function() {
-  		var commented = function() {
-<?php 			if( get_option( 'kissmetrics_identify_unregistered' ) ) { ?>
-	  			_kmq.push(['identify', document.getElementById('email').value]);
-<?php 			} ?>
-  				_kmq.push(['record', 'Commented', {
-					name: document.getElementById( 'author' ).value,
-					email: document.getElementById( 'email' ).value,
-					comment: document.getElementById( 'comment' ).value
-				}]);
-  			},
-			el = document.getElementById('submit');
-
-		if(el.addEventListener) {
-			el.addEventListener('mousedown', commented, false);
-		} else if(el.attachEvent)  {
-			el.attachEvent('onmousedown', commented);
-		}
-  });
-</script><?php
+			if ( ! function_exists( 'wc_get_order' ) ) {
+				return;
 			}
-		}
 
-
-		/**
-		 * Indentify users by email address when they submit a comment.
-		 */
-		function identify_comment_user() {
-			// Get this comment author's email address.
-			$comment_author_email = $_COOKIE['comment_author_email_' . COOKIEHASH];
-
-			// Only track the commenter by email address if they're not signed in already.
-			if( !is_user_logged_in() && ( is_single() || is_page() ) && $comment_author_email && get_option( 'kissmetrics_identify_unregistered' ) ) {
-?><script type="text/javascript">
-	_kmq.push(['identify', '<?php echo $comment_author_email; ?>']);
-</script><?php
+			$order_id = absint( get_query_var( 'order-received' ) );
+			if ( ! $order_id ) {
+				global $wp;
+				if ( ! empty( $wp->query_vars['order-received'] ) ) {
+					$order_id = absint( $wp->query_vars['order-received'] );
+				}
 			}
+			if ( ! $order_id ) {
+				return;
+			}
+
+			$order = wc_get_order( $order_id );
+			if ( ! $order ) {
+				return;
+			}
+
+			// Only emit for the buyer viewing their own order (key must match).
+			$key = isset( $_GET['key'] ) ? sanitize_text_field( wp_unslash( $_GET['key'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+			if ( ! $key || ! hash_equals( (string) $order->get_order_key(), $key ) ) {
+				return;
+			}
+
+			$items = array();
+			foreach ( $order->get_items() as $item ) {
+				$items[] = $item->get_name();
+			}
+
+			$props = array(
+				'Order ID'   => $order_id,
+				'Revenue'    => (float) $order->get_total(),
+				'Currency'   => $order->get_currency(),
+				'Item Count' => count( $items ),
+				'Items'      => $items,
+			);
+
+			$js    = '';
+			$email = $order->get_billing_email();
+			if ( $email ) {
+				$js .= "_kmq.push(['identify','" . esc_js( $email ) . "']);";
+			}
+			$js .= "_kmq.push(['record','Purchased'," . wp_json_encode( $props ) . ']);';
+
+			wp_register_script( 'kissmetrics-wc', false, array( 'kissmetrics' ), KISSMETRICS_VERSION, true );
+			wp_enqueue_script( 'kissmetrics-wc' );
+			wp_add_inline_script( 'kissmetrics-wc', $js );
 		}
 	}
 }
 
-// If the JS URL is defined in the options, set the variable
-if( function_exists( 'get_option' ) ) {
-	$km_key = get_option( 'kissmetrics_key' );
-}
+// Front-end + login snippet.
+add_action( 'wp_enqueue_scripts', array( 'Kissmetrics_Filter', 'enqueue' ) );
+add_action( 'login_enqueue_scripts', array( 'Kissmetrics_Filter', 'enqueue_login' ) );
 
-// Current site domain and host
-$origin = KM_Filter::get_domain( $_SERVER['HTTP_HOST'] );
-
-// Output analytics to all pages and the login page
-add_action( 'wp_head', array( 'KM_Filter', 'output_analytics' ) );
-add_action( 'login_head', array( 'KM_Filter', 'output_analytics' ) );
-
-// On all pages (if enabled), identify comments by user
-add_action( 'wp_head', array( 'KM_Filter', 'identify_comment_user' ) );
-
-if( $km_key != '' && function_exists( 'get_option' ) ) {
-	// Filter links for tracking
-	add_filter( 'the_content', array( 'KM_Filter', 'the_content' ), 99 );
-	add_filter( 'comment_text', array( 'KM_Filter', 'comment_text' ), 99 );
-
-	// Login form tracking
-	add_action( 'login_footer', array( 'KM_Filter', 'track_login' ) );
-
-	// Register form tracking
-	add_action( 'login_head', array( 'KM_Filter', 'track_register_view' ) );
-	add_action( 'login_footer', array( 'KM_Filter', 'track_register' ) );
-
-	// Comment form tracking
-	add_action( 'comment_form', array( 'KM_Filter', 'track_comment_form' ) );
-}
+// Content / comment / commerce hooks (only meaningful once a key is set).
+add_filter( 'the_content', array( 'Kissmetrics_Filter', 'the_content' ), 99 );
+add_filter( 'comment_text', array( 'Kissmetrics_Filter', 'comment_text' ), 99 );
+add_action( 'comment_form', array( 'Kissmetrics_Filter', 'track_comment_form' ) );
+// Runs after enqueue() (priority 10) so the 'kissmetrics' base handle is registered first.
+add_action( 'wp_enqueue_scripts', array( 'Kissmetrics_Filter', 'track_purchase' ), 20 );

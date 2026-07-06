@@ -1,195 +1,213 @@
 <?php
 /**
+ * Kissmetrics settings screen (Settings → Kissmetrics).
+ *
  * @package Kissmetrics
  */
 
-if( !class_exists( 'KM_Admin' ) ) {
-	class KM_Admin {
+// Prevent direct access.
+if ( ! defined( 'ABSPATH' ) ) {
+	exit;
+}
+
+if ( ! class_exists( 'Kissmetrics_Admin' ) ) {
+
+	/**
+	 * Renders and persists the plugin configuration.
+	 */
+	class Kissmetrics_Admin {
 
 		/**
-		 * Add the configuration page to the "Settings" menu.
+		 * Boolean options toggled by checkboxes on the settings screen.
+		 *
+		 * Maps the form field name => the option name stored in wp_options.
+		 *
+		 * @var array
 		 */
-		function add_config_page() {
-			global $wpdb;
+		private static $checkbox_options = array(
+			'km_identify'              => 'kissmetrics_identify_users',
+			'km_login'                 => 'kissmetrics_track_login',
+			'km_signup_view'           => 'kissmetrics_track_signup_view',
+			'km_signup'                => 'kissmetrics_track_signup',
+			'km_views'                 => 'kissmetrics_track_views',
+			'km_links'                 => 'kissmetrics_track_links',
+			'km_comment_links'         => 'kissmetrics_track_comment_links',
+			'km_social_buttons'        => 'kissmetrics_track_social',
+			'km_search'                => 'kissmetrics_track_search',
+			'km_comment'               => 'kissmetrics_track_comment',
+			'km_identify_unregistered' => 'kissmetrics_identify_unregistered',
+			'km_ecommerce'             => 'kissmetrics_track_ecommerce',
+		);
 
-			if( function_exists( 'add_submenu_page' ) ) {
-				add_submenu_page( 'options-general.php', 'Kissmetrics Configuration', 'Kissmetrics', 1, 'kissmetrics', array( __CLASS__, 'config_page' ) );
-			}
+		/**
+		 * Add "Kissmetrics" under the Settings menu.
+		 */
+		public static function add_config_page() {
+			add_submenu_page(
+				'options-general.php',
+				__( 'Kissmetrics Configuration', 'kissmetrics' ),
+				__( 'Kissmetrics', 'kissmetrics' ),
+				'manage_options',
+				'kissmetrics',
+				array( __CLASS__, 'config_page' )
+			);
 		}
 
+		/**
+		 * Persist the submitted settings (nonce-checked, capability-checked).
+		 */
+		private static function maybe_save() {
+			if ( ! isset( $_POST['submit'] ) ) {
+				return false;
+			}
+			if ( ! current_user_can( 'manage_options' ) ) {
+				wp_die( esc_html__( 'You do not have permission to change these settings.', 'kissmetrics' ) );
+			}
+			check_admin_referer( 'km_config_action' );
+
+			$key = isset( $_POST['km_key'] ) ? sanitize_text_field( wp_unslash( $_POST['km_key'] ) ) : '';
+			update_option( 'kissmetrics_key', $key );
+
+			foreach ( self::$checkbox_options as $field => $option ) {
+				update_option( $option, isset( $_POST[ $field ] ) ? 1 : 0 );
+			}
+
+			return true;
+		}
 
 		/**
-		 * Create the configuration page. Also handle updating the configuration.
+		 * Output a single checkbox row helper.
+		 *
+		 * @param string $field Form field / id.
+		 * @param string $option Option name to read the checked state from.
+		 * @param string $label Translated label.
+		 * @param string $description Optional translated description.
 		 */
-		function config_page() {
-			if( isset( $_POST['submit'] ) ) {
-				if( !current_user_can( 'manage_options' ) )
-					die( __('You cannot edit the UA string.') );
-
-				check_admin_referer('km_config_action');
-				$km_key = $_POST['km_key'];
-				update_option( 'kissmetrics_key', $km_key );
-
-				$km_identify = $_POST['km_identify'];
-				update_option( 'kissmetrics_identify_users', $km_identify );
-
-				$km_login = $_POST['km_login'];
-				update_option( 'kissmetrics_track_login', $km_login );
-
-				$km_signup_view = $_POST['km_signup_view'];
-				update_option( 'kissmetrics_track_signup_view', $km_signup_view );
-
-				$km_signup = $_POST['km_signup'];
-				update_option( 'kissmetrics_track_signup', $km_signup );
-
-				$km_views = $_POST['km_views'];
-				update_option( 'kissmetrics_track_views', $km_views );
-
-				$km_links = $_POST['km_links'];
-				update_option( 'kissmetrics_track_links', $km_links );
-
-				$km_comment_links = $_POST['km_comment_links'];
-				update_option( 'kissmetrics_track_comment_links', $km_comment_links );
-
-				$km_social_buttons = $_POST['km_social_buttons'];
-				update_option( 'kissmetrics_track_social', $km_social_buttons );
-
-				$km_search = $_POST['km_search'];
-				update_option( 'kissmetrics_track_search', $km_search );
-
-				$km_comment = $_POST['km_comment'];
-				update_option( 'kissmetrics_track_comment', $km_comment );
-
-				$km_identify_unregistered = $_POST['km_identify_unregistered'];
-				update_option( 'kissmetrics_identify_unregistered', $km_identify_unregistered );
+		private static function checkbox( $field, $option, $label, $description = '' ) {
+			printf(
+				'<label for="%1$s"><input id="%1$s" name="%1$s" type="checkbox"%2$s> <span>%3$s</span></label>',
+				esc_attr( $field ),
+				checked( get_option( $option ), 1, false ),
+				esc_html( $label )
+			);
+			if ( $description ) {
+				echo ' <span class="description">' . esc_html( $description ) . '</span>';
 			}
+			echo '<br>';
+		}
+
+		/**
+		 * Render the settings screen.
+		 */
+		public static function config_page() {
+			$saved = self::maybe_save();
 			?>
 			<div class="wrap">
-				<div id="icon-options-general" class="icon32"></div>
-				<h2>Kissmetrics</h2>
+				<h1><?php esc_html_e( 'Kissmetrics', 'kissmetrics' ); ?></h1>
 
-				<?php if( isset( $_POST['submit'] ) ) { ?>
-				<div id="saved" style="width:40%;height:40px;line-height:40px;margin:20px auto;background:#85b84d;color:#fff;border:1px solid #608537;text-align:center;font-weight:700;">Your settings have been saved.</div>
-				<script type="text/javascript">
-					setTimeout( function() {
-						var saved = document.getElementById( 'saved' );
-						saved.parentNode.removeChild( saved );
-					}, 5000 );
-				</script>
-				<?php } ?>
+				<?php if ( $saved ) : ?>
+					<div class="notice notice-success is-dismissible">
+						<p><?php esc_html_e( 'Your settings have been saved.', 'kissmetrics' ); ?></p>
+					</div>
+				<?php endif; ?>
 
-				<p>Description goes here.</p>
+				<p>
+					<?php esc_html_e( 'This official Kissmetrics plugin installs your tracking code and captures how visitors engage with your site — pageviews, sign-ups, search, comments, and WooCommerce purchases.', 'kissmetrics' ); ?>
+				</p>
 
 				<form action="" method="post" id="kissmetrics-config">
-				<?php wp_nonce_field('km_config_action'); ?>
-					<table class="form-table">
+					<?php wp_nonce_field( 'km_config_action' ); ?>
+					<table class="form-table" role="presentation">
 						<tbody>
-							<tr valign="top">
-								<th scope="row">
-									<label for="km_key">API Key</label>
-								</th>
+							<tr>
+								<th scope="row"><label for="km_key"><?php esc_html_e( 'API Key', 'kissmetrics' ); ?></label></th>
 								<td>
-									<input id="km_key" name="km_key" type="text" class="regular-text" value="<?php echo get_option( 'kissmetrics_key' ); ?>" style="font-family: 'Courier New', Courier, mono; font-size: 1em;" />
-									<span class="description">Get your API key from the <a href="https://app.kissmetrics.io/settings">Kissmetrics Settings</a> page.</span>
+									<input id="km_key" name="km_key" type="text" class="regular-text code"
+										value="<?php echo esc_attr( get_option( 'kissmetrics_key' ) ); ?>" />
+									<p class="description">
+										<?php
+										printf(
+											/* translators: %s: link to the Kissmetrics settings page. */
+											esc_html__( 'Get your API key from the %s page.', 'kissmetrics' ),
+											'<a href="https://app.kissmetrics.io/settings" target="_blank" rel="noopener">' . esc_html__( 'Kissmetrics Settings', 'kissmetrics' ) . '</a>'
+										);
+										?>
+									</p>
 								</td>
 							</tr>
 
-							<tr valign="top">
-								<th scope="row">
-									Identity
-								</th>
+							<tr>
+								<th scope="row"><?php esc_html_e( 'Identity', 'kissmetrics' ); ?></th>
 								<td>
-									<label for="km_identify">
-										<input id="km_identify" name="km_identify" type="checkbox"<?php if( get_option( 'kissmetrics_identify_users' ) ) echo 'checked="checked"'; ?>>
-										<span>Identify authenticated users</span>
-									</label>
-									<br>
-									<label for="km_login">
-										<input id="km_login" name="km_login" type="checkbox"<?php if( get_option( 'kissmetrics_track_login' ) ) echo 'checked="checked"'; ?>>
-										<span>Track login event</span>
-									</label>
+									<?php
+									self::checkbox( 'km_identify', 'kissmetrics_identify_users', __( 'Identify authenticated users', 'kissmetrics' ) );
+									self::checkbox( 'km_login', 'kissmetrics_track_login', __( 'Track login event', 'kissmetrics' ) );
+									?>
 								</td>
 							</tr>
 
-							<tr valign="top">
-								<th scope="row">
-									Registration
-								</th>
+							<tr>
+								<th scope="row"><?php esc_html_e( 'Registration', 'kissmetrics' ); ?></th>
 								<td>
-									<label for="km_signup_view">
-										<input id="km_signup_view" name="km_signup_view" type="checkbox"<?php if( get_option( 'kissmetrics_track_signup_view' ) ) echo 'checked="checked"'; ?>>
-										<span>Track sign up page view</span>
-									</label>
-									<br>
-									<label for="km_signup">
-										<input id="km_signup" name="km_signup" type="checkbox"<?php if( get_option( 'kissmetrics_track_signup' ) ) echo 'checked="checked"'; ?>>
-										<span>Track registration event</span>
-									</label>
+									<?php
+									self::checkbox( 'km_signup_view', 'kissmetrics_track_signup_view', __( 'Track sign up page view', 'kissmetrics' ) );
+									self::checkbox( 'km_signup', 'kissmetrics_track_signup', __( 'Track registration event', 'kissmetrics' ) );
+									?>
 								</td>
 							</tr>
 
-							<tr valign="top">
-								<th scope="row">
-									General tracking
-								</th>
+							<tr>
+								<th scope="row"><?php esc_html_e( 'General tracking', 'kissmetrics' ); ?></th>
 								<td>
-									<label for="km_views">
-										<input id="km_views" name="km_views" type="checkbox"<?php if( get_option( 'kissmetrics_track_views' ) ) echo 'checked="checked"'; ?>>
-										<span>Post/page views</span>
-									</label>
-									<br>
-									<label for="km_links">
-										<input id="km_links" name="km_links" type="checkbox"<?php if( get_option( 'kissmetrics_track_links' ) ) echo 'checked="checked"'; ?>>
-										<span>Links in posts/pages</span>
-									</label>
-									<br>
-									<label for="km_comment_links">
-										<input id="km_comment_links" name="km_comment_links" type="checkbox"<?php if( get_option( 'kissmetrics_track_comment_links' ) ) echo 'checked="checked"'; ?>>
-										Links in comments
-									</label>
-									<br>
-									<label for="km_social_buttons">
-										<input id="km_social_buttons" name="km_social_buttons" type="checkbox"<?php if( get_option( 'kissmetrics_track_social' ) ) echo 'checked="checked"'; ?>>
-										Social buttons (Facebook, Twitter)
-									</label>
-									<br>
-									<label for="km_search">
-										<input id="km_search" name="km_search" type="checkbox"<?php if( get_option( 'kissmetrics_track_search' ) ) echo 'checked="checked"'; ?>>
-										Search queries
-									</label>
+									<?php
+									self::checkbox( 'km_views', 'kissmetrics_track_views', __( 'Post/page views', 'kissmetrics' ) );
+									self::checkbox( 'km_links', 'kissmetrics_track_links', __( 'Links in posts/pages', 'kissmetrics' ) );
+									self::checkbox( 'km_comment_links', 'kissmetrics_track_comment_links', __( 'Links in comments', 'kissmetrics' ) );
+									self::checkbox( 'km_social_buttons', 'kissmetrics_track_social', __( 'Social buttons (Facebook, Twitter)', 'kissmetrics' ) );
+									self::checkbox( 'km_search', 'kissmetrics_track_search', __( 'Search queries', 'kissmetrics' ) );
+									?>
 								</td>
 							</tr>
 
-							<tr valign="top">
-								<th scope="row">
-									Comments
-								</th>
+							<tr>
+								<th scope="row"><?php esc_html_e( 'Comments', 'kissmetrics' ); ?></th>
 								<td>
-									<label for="km_comment">
-										<input id="km_comment" name="km_comment" type="checkbox"<?php if( get_option( 'kissmetrics_track_comment' ) ) echo 'checked="checked"'; ?>>
-										<span>Track comment submission</span>
-									</label>
-									<br>
-									<label for="km_identify_unregistered">
-										<input id="km_identify_unregistered" name="km_identify_unregistered" type="checkbox"<?php if( get_option( 'kissmetrics_identify_unregistered' ) ) echo 'checked="checked"'; ?>>
-										<span>Identify unregistered users by comment email address</span>
-										<span class="description">(A user can only be identified if they have submitted a comment.)</span>
-									</label>
+									<?php
+									self::checkbox( 'km_comment', 'kissmetrics_track_comment', __( 'Track comment submission', 'kissmetrics' ) );
+									self::checkbox(
+										'km_identify_unregistered',
+										'kissmetrics_identify_unregistered',
+										__( 'Identify unregistered users by comment email address', 'kissmetrics' ),
+										__( '(A user can only be identified after they submit a comment.)', 'kissmetrics' )
+									);
+									?>
+								</td>
+							</tr>
+
+							<tr>
+								<th scope="row"><?php esc_html_e( 'WooCommerce', 'kissmetrics' ); ?></th>
+								<td>
+									<?php
+									self::checkbox(
+										'km_ecommerce',
+										'kissmetrics_track_ecommerce',
+										__( 'Track purchases (revenue, items, order ID)', 'kissmetrics' )
+									);
+									if ( ! class_exists( 'WooCommerce' ) ) {
+										echo '<p class="description">' . esc_html__( 'WooCommerce is not active — this option has no effect until it is installed.', 'kissmetrics' ) . '</p>';
+									}
+									?>
 								</td>
 							</tr>
 						</tbody>
 					</table>
 
-					<p class="submit">
-						<input type="submit" name="submit" class="button-primary" value="Save Changes" style="margin:0 0 0 223px;" />
-					</p>
+					<?php submit_button(); ?>
 				</form>
 			</div>
 			<?php
 		}
-
 	}
 }
 
-// Add the menu item
-add_action( 'admin_menu', array( 'KM_Admin', 'add_config_page' ) );
+add_action( 'admin_menu', array( 'Kissmetrics_Admin', 'add_config_page' ) );

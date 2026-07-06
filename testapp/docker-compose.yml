@@ -1,0 +1,59 @@
+name: kmwp-testapp
+# A standing WordPress test site for the Kissmetrics plugin.
+# Unlike tests/integration (throwaway, torn down each run), this one persists
+# so you can browse it, log into wp-admin, paste a real KM key, and watch events.
+services:
+  db:
+    image: mariadb:11
+    restart: unless-stopped
+    environment:
+      MARIADB_ROOT_PASSWORD: root
+      MARIADB_DATABASE: wordpress
+      MARIADB_USER: wordpress
+      MARIADB_PASSWORD: wordpress
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 3s
+      timeout: 5s
+      retries: 30
+    volumes:
+      - dbdata:/var/lib/mysql
+
+  wp:
+    image: wordpress:php8.2-apache
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8080:80"
+    environment:
+      WORDPRESS_DB_HOST: db
+      WORDPRESS_DB_USER: wordpress
+      WORDPRESS_DB_PASSWORD: wordpress
+      WORDPRESS_DB_NAME: wordpress
+      # WP_DEBUG on so plugin PHP notices/warnings surface while you test.
+      WORDPRESS_DEBUG: "1"
+    volumes:
+      - wpdata:/var/www/html
+      # Live-mount the plugin: edits on disk show up in the site (restart wp to clear OPcache).
+      - ../kissmetrics:/var/www/html/wp-content/plugins/kissmetrics
+
+  cli:
+    image: wordpress:cli-php8.2
+    user: "33:33"
+    depends_on:
+      - wp
+    environment:
+      WORDPRESS_DB_HOST: db
+      WORDPRESS_DB_USER: wordpress
+      WORDPRESS_DB_PASSWORD: wordpress
+      WORDPRESS_DB_NAME: wordpress
+    volumes:
+      - wpdata:/var/www/html
+      - ../kissmetrics:/var/www/html/wp-content/plugins/kissmetrics
+    entrypoint: ["tail", "-f", "/dev/null"]
+
+volumes:
+  dbdata:
+  wpdata:

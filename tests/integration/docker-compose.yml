@@ -1,0 +1,46 @@
+name: kmwptest
+services:
+  db:
+    image: mariadb:11
+    environment:
+      MARIADB_ROOT_PASSWORD: root
+      MARIADB_DATABASE: wordpress
+      MARIADB_USER: wordpress
+      MARIADB_PASSWORD: wordpress
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 3s
+      timeout: 5s
+      retries: 30
+  wp:
+    image: wordpress:php8.2-apache
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8089:80"
+    environment:
+      WORDPRESS_DB_HOST: db
+      WORDPRESS_DB_USER: wordpress
+      WORDPRESS_DB_PASSWORD: wordpress
+      WORDPRESS_DB_NAME: wordpress
+      WORDPRESS_DEBUG: "1"
+    volumes:
+      - wpdata:/var/www/html
+      - ./kissmetrics:/var/www/html/wp-content/plugins/kissmetrics
+  cli:
+    image: wordpress:cli-php8.2
+    user: "33:33"
+    depends_on:
+      - wp
+    environment:
+      WORDPRESS_DB_HOST: db
+      WORDPRESS_DB_USER: wordpress
+      WORDPRESS_DB_PASSWORD: wordpress
+      WORDPRESS_DB_NAME: wordpress
+    volumes:
+      - wpdata:/var/www/html
+      - ./kissmetrics:/var/www/html/wp-content/plugins/kissmetrics
+    entrypoint: ["tail", "-f", "/dev/null"]
+volumes:
+  wpdata:
