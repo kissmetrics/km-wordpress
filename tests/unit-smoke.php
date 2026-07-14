@@ -115,21 +115,40 @@ $GLOBALS['wp_state']   = array('search' => true, 'search_query' => 'red shoes');
 Kissmetrics_Filter::enqueue();
 check('Searched Site event with query', strpos($GLOBALS['captured_js'], "'Searched Site',{'WordPress Search Query':'red shoes'}") !== false);
 
-// 4. Outbound-link detection (THE $origin bug fix)
+// 4. Outbound-link detection (THE $origin bug fix). Tracking JS is now queued via
+//    the footer handle; parse_link returns only the (id-injected) anchor markup.
+$GLOBALS['wp_options'] = array('kissmetrics_key' => 'K', 'kissmetrics_track_links' => 1);
 $internal = array('<a href="x">t</a>', '', 'https://example.com/post', '', 'Internal');
 $external = array('<a href="x">t</a>', '', 'https://google.com/x',    '', 'External');
-$in  = Kissmetrics_Filter::parse_link('Page', 'Article', $internal);
-$out = Kissmetrics_Filter::parse_link('Page', 'Article', $external);
-check('internal link => trackClick',                 strpos($in, '"trackClick"') !== false && strpos($in, 'OutboundLink') === false);
-check('external link => trackClickOnOutboundLink',   strpos($out, 'trackClickOnOutboundLink') !== false);
+$withid   = array('<a id="foo" href="x">t</a>', 'id="foo" ', 'https://example.com/x', '', 'Text');
 
-// 5. Post view event appended to content
-$GLOBALS['wp_options'] = array('kissmetrics_track_views' => 1);
+reset_capture();
+$in    = Kissmetrics_Filter::parse_link('Page', 'Article', $internal);
+$in_js = $GLOBALS['captured_js'];
+reset_capture();
+$out    = Kissmetrics_Filter::parse_link('Page', 'Article', $external);
+$out_js = $GLOBALS['captured_js'];
+reset_capture();
+$kept    = Kissmetrics_Filter::parse_link('Page', 'Article', $withid);
+$kept_js = $GLOBALS['captured_js'];
+
+check('internal link => trackClick',               strpos($in_js, '"trackClick"') !== false && strpos($in_js, 'OutboundLink') === false);
+check('external link => trackClickOnOutboundLink', strpos($out_js, 'trackClickOnOutboundLink') !== false);
+check('parse_link never returns a <script> tag',   strpos($in, '<script') === false && strpos($out, '<script') === false);
+check('parse_link injects an escaped id when none', preg_match('/^<a id="km_link_[0-9a-f]+" href="x">t<\/a>$/', $in) === 1);
+check('anchor with an id passes through untouched', $kept === '<a id="foo" href="x">t</a>');
+check('existing id is reused in the tracking JS',   strpos($kept_js, '"foo"') !== false);
+
+// 5. Post view event is queued via the footer handle, NOT appended to the content.
+reset_capture();
+$GLOBALS['wp_options'] = array('kissmetrics_key' => 'K', 'kissmetrics_track_views' => 1);
 $GLOBALS['wp_state']   = array('single' => true, 'title' => 'Hello');
 $GLOBALS['post']       = (object) array('ID' => 42);
 $content = Kissmetrics_Filter::the_content('<p>body</p>');
-check('the_content appends Viewed post event with ID',
-    strpos($content, '"Viewed post"') !== false && strpos($content, '"ID":42') !== false);
+check('the_content queues Viewed post event with ID',
+    strpos($GLOBALS['captured_js'], '"Viewed post"') !== false && strpos($GLOBALS['captured_js'], '"ID":42') !== false);
+check('the_content returns content without a <script> tag',
+    $content === '<p>body</p>');
 
 // 6. WooCommerce purchase event (stubbed WC order, server-side order-received detection)
 function wc_get_order($id) {

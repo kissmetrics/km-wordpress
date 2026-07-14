@@ -34,9 +34,19 @@ if ( ! class_exists( 'Kissmetrics_Filter' ) ) {
 	 *
 	 * All browser-facing JavaScript is escaped with esc_js()/wp_json_encode() and
 	 * printed through the script queue (wp_add_inline_script) so the plugin passes
-	 * the WordPress.org Plugin Check guidelines.
+	 * the WordPress.org Plugin Check guidelines. No <script> tags are ever echoed or
+	 * returned directly, and no content markup is rebuilt from raw request/regex data.
 	 */
 	class Kissmetrics_Filter {
+
+		/**
+		 * Handle used for events discovered while rendering content (post/page views,
+		 * link clicks). Registered in the footer so it can accept inline JS added
+		 * during the_content()/comment_text(), which run after the head is printed.
+		 *
+		 * @var string
+		 */
+		const EVENTS_HANDLE = 'kissmetrics-events';
 
 		/**
 		 * Matches anchor tags so we can attach click tracking.
@@ -88,6 +98,21 @@ if ( ! class_exists( 'Kissmetrics_Filter' ) ) {
 			wp_register_script( 'kissmetrics', false, array(), KISSMETRICS_VERSION, false );
 			wp_enqueue_script( 'kissmetrics' );
 			wp_add_inline_script( 'kissmetrics', self::loader_js( $key ) . self::context_js() );
+
+			// Footer handle that content/comment filters append event JS to. Prints
+			// nothing unless events are added, so it is harmless when idle.
+			wp_register_script( self::EVENTS_HANDLE, false, array( 'kissmetrics' ), KISSMETRICS_VERSION, true );
+			wp_enqueue_script( self::EVENTS_HANDLE );
+		}
+
+		/**
+		 * Queue a snippet of event JS onto the footer handle instead of echoing a
+		 * <script> tag. WordPress renders it through the script API, escaped by us.
+		 *
+		 * @param string $js JavaScript statement(s) to append.
+		 */
+		private static function push_event_js( $js ) {
+			wp_add_inline_script( self::EVENTS_HANDLE, $js );
 		}
 
 		/**
@@ -188,7 +213,7 @@ if ( ! class_exists( 'Kissmetrics_Filter' ) ) {
 				return '';
 			}
 
-			$email = sanitize_email( wp_unslash( $_COOKIE[ $cookie_key ] ) ); // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.MissingUnslash
+			$email = sanitize_email( wp_unslash( $_COOKIE[ $cookie_key ] ) );
 			if ( ! $email ) {
 				return '';
 			}
@@ -222,6 +247,10 @@ if ( ! class_exists( 'Kissmetrics_Filter' ) ) {
 		 * @return string
 		 */
 		public static function the_content( $text ) {
+			// Nothing to track without a key (the footer handle is only registered then).
+			if ( '' === self::key() ) {
+				return $text;
+			}
 			// Don't inject into feeds or REST responses.
 			if ( is_feed() || ( defined( 'REST_REQUEST' ) && REST_REQUEST ) ) {
 				return $text;
@@ -244,8 +273,8 @@ if ( ! class_exists( 'Kissmetrics_Filter' ) ) {
 					$props['Categories'] = $categories;
 				}
 
-				$kmq   = array( 'record', 'Viewed ' . ( $is_post ? 'post' : 'page' ), $props );
-				$text .= '<script>_kmq.push(' . wp_json_encode( $kmq ) . ');</script>';
+				$kmq = array( 'record', 'Viewed ' . ( $is_post ? 'post' : 'page' ), $props );
+				self::push_event_js( '_kmq.push(' . wp_json_encode( $kmq ) . ');' );
 			}
 
 			if ( get_option( 'kissmetrics_track_links' ) ) {
@@ -262,6 +291,9 @@ if ( ! class_exists( 'Kissmetrics_Filter' ) ) {
 		 * @return string
 		 */
 		public static function comment_text( $text ) {
+			if ( '' === self::key() ) {
+				return $text;
+			}
 			if ( get_option( 'kissmetrics_track_comment_links' ) ) {
 				$text = preg_replace_callback( self::$link_regex, array( 'Kissmetrics_Filter', 'parse_comment_link' ), $text );
 			}
@@ -288,7 +320,12 @@ if ( ! class_exists( 'Kissmetrics_Filter' ) ) {
 		}
 
 		/**
-		 * Build the click-tracking markup for a single matched link.
+		 * Attach click tracking to a single matched link.
+		 *
+		 * The tracking JS is queued onto the footer handle (never echoed as a
+		 * <script> tag). The anchor itself is returned unchanged when it already has
+		 * an id; otherwise only an escaped generated id is injected. The original
+		 * href/attributes/text are never rebuilt or re-emitted from the raw captures.
 		 *
 		 * @param string $page_title  Title of the current page.
 		 * @param string $type        "Article" or "Comment".
@@ -307,7 +344,7 @@ if ( ! class_exists( 'Kissmetrics_Filter' ) ) {
 				preg_match( $id_attr_regex, $link_matches[3], $id_attr );
 			}
 			$has_id = ! empty( $id_attr );
-			$id     = $has_id ? $id_attr[1] : uniqid( 'link_' );
+			$id     = $has_id ? $id_attr[1] : uniqid( 'km_link_' );
 
 			$is_outbound = ( '' !== $target_domain && $target_domain !== $origin_domain );
 
@@ -320,12 +357,16 @@ if ( ! class_exists( 'Kissmetrics_Filter' ) ) {
 					'Page'  => $page_title,
 				),
 			);
+			self::push_event_js( '_kmq.push(' . wp_json_encode( $kmq ) . ');' );
 
-			return '<a ' . $link_matches[1] . 'href="' . $link_matches[2] . '"' . $link_matches[3]
-				. ( ! $has_id ? ' id="' . esc_attr( $id ) . '"' : '' ) . '>'
-				. $link_matches[4]
-				. '</a>'
-				. '<script>_kmq.push(' . wp_json_encode( $kmq ) . ');</script>';
+			if ( $has_id ) {
+				// Pass the author's markup through untouched.
+				return $link_matches[0];
+			}
+
+			// Inject only an escaped id into the original anchor; the id is hex-only
+			// (uniqid) so it is safe to use in the preg replacement string.
+			return preg_replace( '/<a\b/i', '<a id="' . esc_attr( $id ) . '"', $link_matches[0], 1 );
 		}
 
 		/**

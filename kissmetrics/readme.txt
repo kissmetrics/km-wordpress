@@ -1,5 +1,5 @@
 === Kissmetrics ===
-Contributors: kissmetrics
+Contributors: kissmetricshq
 Tags: analytics, kissmetrics, tracking, behavior, woocommerce
 Requires at least: 6.3
 Tested up to: 7.0
